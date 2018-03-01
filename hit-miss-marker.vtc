@@ -1,0 +1,36 @@
+varnishtest hit-miss-marker
+# This is how you can set a header telling if the request was a HIT or a MISS
+
+server s1 {
+	rxreq
+	txresp -status 200
+	expect req.url == "/"
+} -start
+
+
+varnish v1 -vcl+backend {
+	vcl 4.0;
+
+	sub vcl_deliver {
+	    if (obj.hits > 0) {
+		set resp.http.X-Cache = "HIT";
+	    } else {
+		set resp.http.X-Cache = "MISS";
+	    }
+	}
+}
+
+client c1 {
+	txreq -url "/"
+        rxresp
+	expect resp.status == 200
+	expect resp.http.X-Cache == "MISS";
+}
+
+client c2 {
+	txreq -url "/"
+        rxresp
+	expect resp.status == 200
+	expect resp.http.X-Cache == "HIT";
+}
+
