@@ -1,0 +1,54 @@
+varnishtest "vsthrottle"
+
+server s1 -repeat 5 {
+        rxreq
+        send "HTTP/1.1 200\r\n\r\n"
+} -start
+
+varnish v1 -vcl+backend {
+
+        import std;
+        import vsthrottle;
+
+        sub vcl_recv {
+          if (vsthrottle.is_denied(client.identity, 3, 10s, 3s)) {
+            # Client has exceeded 3 reqs per 10s.
+            # When this happens, block altogether for the next 3s.
+            return (synth(429, "Too Many Requests"));
+          }
+        }
+
+        sub vcl_synth {
+          if (resp.status == 429) {
+            # Setting the Retry-After header and regsubbing away the decimals
+            set resp.http.Retry-After = regsub(vsthrottle.blocked(client.identity, 3, 10s, 3s), "\.\d+$", "");
+            return(deliver);
+          }
+        }
+
+} -start
+
+client c1 {
+        txreq
+        rxresp
+        expect resp.status == 200
+        txreq
+        rxresp
+        expect resp.status == 200
+        txreq
+        rxresp
+        expect resp.status == 200
+        txreq
+        rxresp
+        expect resp.status == 429
+
+        # wait until the block times out
+        delay 4
+
+        # and expect another 200
+        txreq
+        rxresp
+        expect resp.status == 200
+
+
+} -run
