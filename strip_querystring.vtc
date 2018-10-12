@@ -1,0 +1,24 @@
+varnishtest "Strip querystrings"
+
+# This will strip the whole querystring of a requested URL
+
+server s1 {
+    rxreq
+    txresp -status 200
+    expect req.url == "/"
+} -start
+
+varnish v1 -vcl+backend {
+    vcl 4.0;
+
+    sub vcl_recv {
+	set req.url = regsub(req.url, "\?.*", "");
+    }
+
+} -start
+
+client c1 {
+    txreq -url "/?test=1&foo=bar&this=that%one" 
+    rxresp
+    expect resp.status == 200
+} -run
